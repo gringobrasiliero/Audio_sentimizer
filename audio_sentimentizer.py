@@ -69,10 +69,7 @@ class Audio_sentimizer():
         # Get the index of the first non-zero element
         if len(nonzero_indices) > 0:
             first_nonzero_index = nonzero_indices[0]
-            print("First index of non-zero element:", first_nonzero_index)
-            print(X[0])
             X = X[first_nonzero_index:]
-            print(X[0])
         else:
             print("The array contains only zeros.")
             self.view_audio(X,sample_rate)
@@ -96,9 +93,7 @@ class Audio_sentimizer():
         i=0
         for dir in subdirectories:
             for filename in os.listdir(os.path.join(directory_path, dir)):
-                print(filename)
                 full_file_path = os.path.join(directory_path,dir, filename)
-                print(full_file_path)
                 if os.path.isfile(full_file_path):
                     row = np.zeros(self.max_length)
                     mfccs = self.parse_audio(full_file_path)
@@ -123,16 +118,7 @@ class Audio_sentimizer():
                     #Removing Extension
                     actor = actor.replace('.wav',"")
                 
-                                    # Create a dictionary with the extracted data
-                    #file_data = {
-                    #    'Modality': modality,
-                    #    'VocalChannel': vocal_channel,
-                    #    'Emotion': emotion,
-                    #    'EmotionalIntensity': emotional_intensity,
-                    #    'Statement': statement,
-                    #    'Repetition': repetition,
-                    #    'Actor': actor
-                    #}
+                    # Create a dictionary with the extracted data
                     file_data = {
                         'Modality': modality,
                         'VocalChannel': vocal_channel,
@@ -145,11 +131,12 @@ class Audio_sentimizer():
                 
                     # Append the dictionary to the list
                     data_list.append(file_data)
+
+                    #BREAKING FOR QUICK TESTING PURPOSES NEED TO REMOVE LATER
                     break
                 break
         # Create a DataFrame from the list of dictionaries
         df = pd.DataFrame(data_list)
-    
         return x_data, df
     
     
@@ -180,11 +167,10 @@ class Audio_sentimizer():
 
     def load_model(self):
         exists = os.path.isdir(self.model_name)
-        model = None
         if exists:
-            model = tf.keras.models.load_model(self.model_name)
-        return model
-    
+            self.model = tf.keras.models.load_model(self.model_name)
+        return
+
     def define_model(self):
         es_callback = keras.callbacks.EarlyStopping(monitor='accuracy', patience=3)
         loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
@@ -209,7 +195,11 @@ class Audio_sentimizer():
 
         for i in range(num_predictions):
             predicted=predictions[i].argmax()
-            label_string = "Predicted:" + self.emotions[predicted] + "\nActual:" + self.emotions[self.y_test[i][0]] + "\n\n"
+            actual = self.y_test.iloc[0]
+
+            results = "Predicted:" + self.emotions[predicted] + "\nActual:" + self.emotions[actual] + "\n\n"
+            print(results)
+
         
     def load_data(self):
         directory_path = 'Audio_Speech_Actors'
@@ -217,10 +207,8 @@ class Audio_sentimizer():
         x_data, y_data = self.get_data(subdirectories, directory_path)
 
         y_data = y_data['Emotion']
-        print(x_data.iloc[0][0])
-            #x_data = x_data.values
-        print(x_data)
-            # Extract features from the nested DataFrame
+
+        # Extract features from the nested DataFrame
         features_list = [np.squeeze(feature) for feature in x_data['feature'].values]
 
             # Convert the list of features to a NumPy array
@@ -240,7 +228,10 @@ class Audio_sentimizer():
         self.x_test = tf.convert_to_tensor(self.x_test, dtype=tf.float32)
         self.x_val = tf.convert_to_tensor(self.x_val, dtype=tf.float32)
 
-        
+        #Printing Len of Datasets
+        print("TRAIN Dataset Length:",len(self.x_train))
+        print("TEST Dataset Length:",len(self.x_test))
+        print("VAL Dataset Length:",len(self.x_val))
         
 
             #y_data = tf.convert_to_tensor(y_data, dtype=tf.int32) NOT NEEDED?
@@ -254,7 +245,7 @@ class Audio_sentimizer():
         plt.ylabel('Accuracy')
         plt.ylim([0.5, 1])
         plt.legend(loc='lower right')
-        plt.savefig('training_history.png')
+        #plt.savefig('training_history.png')
         plt.waitforbuttonpress()
         plt.close()
         #Display Loss History Plot
@@ -264,7 +255,7 @@ class Audio_sentimizer():
         plt.ylabel('Loss')
         plt.ylim([0.5, 1])
         plt.legend(loc='lower right')
-        plt.savefig('training_loss.png')
+        #plt.savefig('training_loss.png')
         plt.waitforbuttonpress()
         plt.close()
         pass
@@ -277,10 +268,18 @@ def main():
     x = Audio_sentimizer()
     x.load_data()
     # Replace 'your_directory_path' with the path to your target directory
-    x.define_model()
-    history = x.train_model()
+
+
+    x.load_model()
+
+    if x.model == None:
+        print("Training Model.")
+        x.define_model()
+        history = x.train_model()
+        x.display_model_history(history)
+
     x.evaluate_test_data()
-    x.make_predictions(5)
+    x.make_predictions(2)
  
 
 if __name__ == "__main__":
