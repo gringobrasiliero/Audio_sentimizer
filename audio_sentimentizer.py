@@ -29,6 +29,7 @@ class Audio_sentimizer():
         self.max_length = 250
         self.emotions = {1:'neutral', 2:'calm', 3:'happy', 4:'sad', 5:'angry', 6:'fearful', 7:'disgust', 8:'surprised'}
         self.emotional_intensity = {1:'normal', 2:'strong'}
+        self.labels = {}
         self.data_actor_length = 24
 
         #Train, Test, and Validation datasets loaded in 'load_data' function
@@ -58,21 +59,23 @@ class Audio_sentimizer():
     def get_label(self):
         index = 0
         labels = {}
+        gender=''
         for i in range(1, self.data_actor_length+1):
             #Actor (01 to 24. Odd numbered actors are male, even numbered actors are female).
             if i%2==0:
-                actor='male'
+                gender='male'
             else:
-                actor='female'
+                gender='female'
 
             for e in range(1, len(self.emotions)+1):
                 emo = self.emotions[e]
-
-
-
-
-                labels[index] = actor + "_" + emo
-                print(labels[index])
+                for intensity in range(1, len(self.emotional_intensity)+1):
+                    emo_intensity = self.emotional_intensity[intensity]
+                    labels[index] = gender + "_" + emo + "_" + emo_intensity
+                    print(labels[index])
+                    index+=1
+        self.labels = labels
+        pass
 
     def get_subdirectories(self, directory_path):
         subdirectories = [d for d in os.listdir(directory_path) if os.path.isdir(os.path.join(directory_path, d))]
@@ -135,7 +138,11 @@ class Audio_sentimizer():
                     actor = file_props[6]
                     #Removing Extension
                     actor = actor.replace('.wav',"")
-                
+                    if int(actor)%2==0:
+                        gender='male'
+                    else:
+                        gender='female'
+
                     # Create a dictionary with the extracted data
                     file_data = {
                         'Modality': modality,
