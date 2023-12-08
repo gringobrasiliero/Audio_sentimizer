@@ -21,6 +21,10 @@ from sklearn.model_selection import train_test_split
   #Statement (01 = "Kids are talking by the door", 02 = "Dogs are sitting by the door").
   #Repetition (01 = 1st repetition, 02 = 2nd repetition).
   #Actor (01 to 24. Odd numbered actors are male, even numbered actors are female).
+def get_key_by_value(dictionary, target_value):
+    for key, value in dictionary.items():
+        if value == target_value:
+            return key
 
 class Audio_sentimizer():
 
@@ -29,9 +33,10 @@ class Audio_sentimizer():
         self.max_length = 250
         self.emotions = {1:'neutral', 2:'calm', 3:'happy', 4:'sad', 5:'angry', 6:'fearful', 7:'disgust', 8:'surprised'}
         self.emotional_intensity = {1:'normal', 2:'strong'}
-        self.labels = {}
         self.data_actor_length = 24
-
+        self.labels = {}
+        self.data_shape = (250,1)
+        
         #Train, Test, and Validation datasets loaded in 'load_data' function
         self.x_train = None
         self.y_train = None
@@ -45,22 +50,22 @@ class Audio_sentimizer():
         self.model = None
 
         #HYPERPARAMETERS
-        self.epochs = 1
-        self.batch_size = 64
+        self.epochs = 50
+        self.batch_size = 32
         self.dropout = 0.2
         self.validation_size = 0.5 # Size of Validation data set - Split from test data set.
 
 
         #Callbacks
-        self.es_callback = keras.callbacks.EarlyStopping(monitor='val_loss',mode='min', patience=3)
+        self.es_callback = keras.callbacks.EarlyStopping(monitor='val_loss',mode='min', patience=10)
 
         pass
 
-    def get_label(self):
+    def get_labels(self):
         index = 0
         labels = {}
         gender=''
-        for i in range(1, self.data_actor_length+1):
+        for i in range(1, 3):
             #Actor (01 to 24. Odd numbered actors are male, even numbered actors are female).
             if i%2==0:
                 gender='male'
@@ -69,13 +74,16 @@ class Audio_sentimizer():
 
             for e in range(1, len(self.emotions)+1):
                 emo = self.emotions[e]
-                for intensity in range(1, len(self.emotional_intensity)+1):
-                    emo_intensity = self.emotional_intensity[intensity]
-                    labels[index] = gender + "_" + emo + "_" + emo_intensity
-                    print(labels[index])
-                    index+=1
+                label = gender + "_" + emo
+                labels[label] = index
+                index+=1
         self.labels = labels
         pass
+
+    def assign_label(self, gender, emo):
+        label_str = gender + "_" + emo
+        label = self.labels[label_str]
+        return label
 
     def get_subdirectories(self, directory_path):
         subdirectories = [d for d in os.listdir(directory_path) if os.path.isdir(os.path.join(directory_path, d))]
@@ -142,24 +150,25 @@ class Audio_sentimizer():
                         gender='male'
                     else:
                         gender='female'
-
+                    label = self.assign_label(gender, self.emotions[emotion])
                     # Create a dictionary with the extracted data
                     file_data = {
-                        'Modality': modality,
-                        'VocalChannel': vocal_channel,
-                        'Emotion': emotion,
-                        'EmotionalIntensity': emotional_intensity,
-                        'Statement': statement,
-                        'Repetition': repetition,
-                        'Actor': actor
+                        #'Modality': modality,
+                        #'VocalChannel': vocal_channel,
+                        #'Emotion': emotion,
+                        #'EmotionalIntensity': emotional_intensity,
+                        #'Statement': statement,
+                        #'Repetition': repetition,
+                        #'Actor': actor,
+                        'Label':label
                     }
                 
                     # Append the dictionary to the list
                     data_list.append(file_data)
 
                     #BREAKING FOR QUICK TESTING PURPOSES NEED TO REMOVE LATER
-                    break
-                break
+                #    break
+                #break
         # Create a DataFrame from the list of dictionaries
         df = pd.DataFrame(data_list)
         return x_data, df
@@ -197,21 +206,36 @@ class Audio_sentimizer():
         return
 
     def define_model(self):
-        es_callback = keras.callbacks.EarlyStopping(monitor='accuracy', patience=3)
-        loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
-        self.model = tf.keras.models.Sequential([
-            tf.keras.layers.Dense(512, input_shape=(250,), activation='relu'), #Original Height, Original Width, and 400 Pixels
-            tf.keras.layers.Dropout(0.2), #20% dropout rate
-            tf.keras.layers.Dense(58, activation=tf.nn.softmax) #57 Different Categories = 58
-            ])
-        
-        self.model.compile(optimizer='adam', loss=loss_fn, metrics=['accuracy'])
-        pass
+            es_callback = keras.callbacks.EarlyStopping(monitor='accuracy', patience=3)
+            loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
+            self.model = tf.keras.models.Sequential([
+                tf.keras.layers.Conv1D(128, 5,  padding='same', activation='relu', input_shape=self.data_shape),
+                tf.keras.layers.Conv1D(128, 5, padding='same', activation='relu', input_shape=self.data_shape),
+                tf.keras.layers.Dropout(0.1),
 
-    
+                tf.keras.layers.MaxPooling1D(pool_size=(16)),
+
+                tf.keras.layers.Conv1D(128, 5,  padding='same', activation='relu', input_shape=self.data_shape),
+                tf.keras.layers.Conv1D(128, 5, padding='same', activation='relu', input_shape=self.data_shape),
+                tf.keras.layers.Conv1D(128, 5, padding='same', activation='relu', input_shape=self.data_shape),
+                tf.keras.layers.Dropout(0.2),
+
+                tf.keras.layers.Conv1D(128, 5, padding='same', activation='relu', input_shape=self.data_shape),
+
+                tf.keras.layers.Flatten(),
+
+                tf.keras.layers.Dense(16, activation=tf.nn.softmax) #16 Different Categories = 16
+                ])
+        
+            self.model.compile(optimizer='adam', loss=loss_fn, metrics=['accuracy'])
+            pass
+
+
+
+
     def train_model(self):
         #Stops training early if Accuracy is decreasing
-        history = self.model.fit(self.x_train, self.y_train, epochs=self.epochs, batch_size=self.batch_size, validation_data=(self.x_val, self.y_val), callbacks=[self.es_callback])    
+        history = self.model.fit(self.x_train, self.y_train, epochs=self.epochs, batch_size=self.batch_size, validation_data=(self.x_val, self.y_val))    
         self.model.save(self.model_name)
         return history
 
@@ -220,9 +244,10 @@ class Audio_sentimizer():
 
         for i in range(num_predictions):
             predicted=predictions[i].argmax()
-            actual = self.y_test.iloc[0]
-
-            results = "Predicted:" + self.emotions[predicted] + "\nActual:" + self.emotions[actual] + "\n\n"
+            actual = self.y_test.iloc[0] 
+            predicted_sentiment = get_key_by_value(self.labels, predicted)
+            actual_sentiment = get_key_by_value(self.labels, actual)
+            results = "Predicted:" + predicted_sentiment + "\nActual:" + actual_sentiment + "\n\n"
             print(results)
 
         
@@ -231,7 +256,7 @@ class Audio_sentimizer():
         subdirectories = self.get_subdirectories(directory_path)
         x_data, y_data = self.get_data(subdirectories, directory_path)
 
-        y_data = y_data['Emotion']
+        y_data = y_data['Label']
 
         # Extract features from the nested DataFrame
         features_list = [np.squeeze(feature) for feature in x_data['feature'].values]
@@ -268,7 +293,7 @@ class Audio_sentimizer():
         plt.plot(history.history['val_accuracy'], label = 'val_accuracy')
         plt.xlabel('Epoch')
         plt.ylabel('Accuracy')
-        plt.ylim([0.5, 1])
+        plt.ylim([0.1, 1])
         plt.legend(loc='lower right')
         #plt.savefig('training_history.png')
         plt.waitforbuttonpress()
@@ -278,7 +303,7 @@ class Audio_sentimizer():
         plt.plot(history.history['val_loss'], label = 'val_loss')
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
-        plt.ylim([0.5, 1])
+        plt.ylim([0.1, 1])
         plt.legend(loc='lower right')
         #plt.savefig('training_loss.png')
         plt.waitforbuttonpress()
@@ -287,15 +312,16 @@ class Audio_sentimizer():
     
 
 
-def main():
+def main2():
     x = Audio_sentimizer()
     x.get_label()
 
 
 
 
-def main2():
+def main():
     x = Audio_sentimizer()
+    x.get_labels()
     x.load_data()
     # Replace 'your_directory_path' with the path to your target directory
 
@@ -309,7 +335,7 @@ def main2():
         x.display_model_history(history)
 
     x.evaluate_test_data()
-    x.make_predictions(2)
+    x.make_predictions(10)
  
 
 if __name__ == "__main__":
