@@ -36,7 +36,7 @@ class Audio_sentimizer():
         self.data_actor_length = 24
         self.labels = {}
         self.data_shape = (250,1)
-        
+        self.sr = 22050
         #Train, Test, and Validation datasets loaded in 'load_data' function
         self.x_train = None
         self.y_train = None
@@ -54,10 +54,10 @@ class Audio_sentimizer():
         self.batch_size = 32
         self.dropout = 0.2
         self.validation_size = 0.5 # Size of Validation data set - Split from test data set.
-
+        self.learning_rate = 0.001
 
         #Callbacks
-        self.es_callback = keras.callbacks.EarlyStopping(monitor='val_loss',mode='min', patience=10)
+        self.es_callback = keras.callbacks.EarlyStopping(monitor='accuracy',mode='max', patience=3)
 
         pass
 
@@ -90,7 +90,7 @@ class Audio_sentimizer():
         return subdirectories
 
     def parse_audio(self, full_file_path):
-        X, sample_rate = librosa.load(full_file_path, res_type='kaiser_fast', duration=3, offset=0.5,sr=22050*2)
+        X, sample_rate = librosa.load(full_file_path, res_type='kaiser_fast', duration=3, offset=0.5,sr=self.sr)
         sample_rate = np.array(sample_rate)
         # Find the indices of non-zero elements
         nonzero_indices = np.nonzero(X)[0]                    
@@ -110,7 +110,7 @@ class Audio_sentimizer():
         loss, accuracy = eval_results
         print("Test Loss:",loss)
         print("Test Accuracy:",accuracy)
-        pass
+        return accuracy
 
 
     def get_data(self, subdirectories, directory_path):
@@ -206,19 +206,20 @@ class Audio_sentimizer():
         return
 
     def define_model(self):
+            opt = tf.keras.optimizers.Adam(learning_rate=self.learning_rate)
             es_callback = keras.callbacks.EarlyStopping(monitor='accuracy', patience=3)
             loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
             self.model = tf.keras.models.Sequential([
                 tf.keras.layers.Conv1D(128, 5,  padding='same', activation='relu', input_shape=self.data_shape),
                 tf.keras.layers.Conv1D(128, 5, padding='same', activation='relu', input_shape=self.data_shape),
-                tf.keras.layers.Dropout(0.1),
+                tf.keras.layers.Dropout(0.2),
 
                 tf.keras.layers.MaxPooling1D(pool_size=(16)),
 
                 tf.keras.layers.Conv1D(128, 5,  padding='same', activation='relu', input_shape=self.data_shape),
                 tf.keras.layers.Conv1D(128, 5, padding='same', activation='relu', input_shape=self.data_shape),
                 tf.keras.layers.Conv1D(128, 5, padding='same', activation='relu', input_shape=self.data_shape),
-                tf.keras.layers.Dropout(0.2),
+                tf.keras.layers.Dropout(0.3),
 
                 tf.keras.layers.Conv1D(128, 5, padding='same', activation='relu', input_shape=self.data_shape),
 
@@ -235,16 +236,16 @@ class Audio_sentimizer():
 
     def train_model(self):
         #Stops training early if Accuracy is decreasing
-        history = self.model.fit(self.x_train, self.y_train, epochs=self.epochs, batch_size=self.batch_size, validation_data=(self.x_val, self.y_val))    
+        history = self.model.fit(self.x_train, self.y_train, epochs=self.epochs, batch_size=self.batch_size, validation_data=(self.x_val, self.y_val),callbacks = [self.es_callback])    
         self.model.save(self.model_name)
         return history
 
     def make_predictions(self, num_predictions):
         predictions = self.model.predict(self.x_test)
-
+        print(self.y_test)
         for i in range(num_predictions):
             predicted=predictions[i].argmax()
-            actual = self.y_test.iloc[0] 
+            actual = self.y_test.iloc[i] 
             predicted_sentiment = get_key_by_value(self.labels, predicted)
             actual_sentiment = get_key_by_value(self.labels, actual)
             results = "Predicted:" + predicted_sentiment + "\nActual:" + actual_sentiment + "\n\n"
@@ -316,6 +317,29 @@ def main2():
     x = Audio_sentimizer()
     x.get_label()
 
+def parameter_tuning():
+    x = Audio_sentimizer()
+    x.get_labels()
+    x.load_data()
+
+
+    sample_rates = [22050, 22050*2, 16000]
+    batch_sizes = [32,64]
+    learning_rates = [0.001, 0.0001, 0.00001]
+
+    for learning_rate in learning_rates:
+        for batch_size in batch_sizes:
+            for sample_rate in sample_rates:
+                x.learning_rate = learning_rate
+                x.batch_size = batch_size
+                x.sr = sample_rate
+
+                x.define_model()
+                history = x.train_model()
+                #x.display_model_history(history)
+                accuracy = x.evaluate_test_data()
+
+
 
 
 
@@ -335,7 +359,12 @@ def main():
         x.display_model_history(history)
 
     x.evaluate_test_data()
-    x.make_predictions(10)
+    x.make_predictions(20)
+
+    sample_rates = [22050, 22050*2, 16000]
+    batch_sizes = [32,64]
+
+
  
 
 if __name__ == "__main__":
