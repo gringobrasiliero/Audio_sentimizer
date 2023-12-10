@@ -353,7 +353,7 @@ def main():
     x.load_model()
 
     if x.model == None:
-        print("Training Model.")
+        print("Training Model..")
         x.define_model()
         history = x.train_model()
         x.display_model_history(history)
